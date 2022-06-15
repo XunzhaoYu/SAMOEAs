@@ -1,0 +1,24 @@
+# DTLZ configs:
+## problem setup:
+x_dim: 10
+y_dim: 3
+x_upperbound: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+x_lowerbound: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+## Kriging model setup:
+coe_range: [0.00001, 100.]
+
+# SAEA configs:
+evaluation_init: 109
+evaluation_max: 300
+
+crossover_op: 'SBX'
+crossover_args: [1.0, 20] # probability, distribution_index
+mutation_op: 'polynomial'
+mutation_args: [0.0, 20] # probability, distribution_index, 0.0 pro indicates 1.0/x_dim
+#(The parameters of reference vectors are fixed.)
+
+# data_IO:
+path_pf: 'problems/DTLZ/'
+path_save: 'results/'
+
