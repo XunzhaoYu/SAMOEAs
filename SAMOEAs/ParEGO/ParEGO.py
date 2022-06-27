@@ -53,7 +53,8 @@ class ParEGO:
         self.SEARCH_EVALUATION_MAX = 10000  # self.config['search_evaluation_max']
         self.method = 'augmented_Tchebycheff'
         # --- --- reference vectors --- ---
-        self.weight_vectors = weight_generation(self.n_objs, 4)
+        self.weight_vectors = weight_generation(self.n_objs)
+        print(self.weight_vectors)
         self.n_weight_vectors = len(self.weight_vectors)
         # --- --- crossover operator --- ---
         self.crossover_args = self.config['crossover_args']
