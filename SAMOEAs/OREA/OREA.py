@@ -45,8 +45,7 @@ class OREA:
         # --- surrogate setups ---
         self.N_LEVELS = 10  # self.config['n_levels']
         self.OVERFITTING_COE = 0.03  # self.config['overfitting_coe']
-        self.DACE_TRAINING_ITERATION_INIT = self.config['dace_training_iteration_init']
-        self.DACE_TRAINING_ITERATION = self.config['dace_training_iteration']
+        self.DACE_TRAINING_ITERATION = 4 #self.config['dace_training_iteration']
         self.COE_RANGE = [1e-5, 10.]  # self.config['coe_range']
         self.EXP_RANGE = [1., 2.]  # self.config['exp_range']
 
@@ -60,7 +59,8 @@ class OREA:
         self.NEIGHBORHOOD_SIZE = 10  # self.config['neighborhood_size']
         self.N_VARIANTS = 100  # self.config['n_variants']
         # --- --- reference vectors --- ---
-        self.vectors = generate_vectors(self.n_objs, layer=3, h=2, h2=1)
+        #self.vectors = generate_vectors(self.n_objs, layer=3, h=2, h2=1)
+        self.vectors = generate_vectors(self.n_objs, layer=2, h=2, h2=1)
         self.normalized_vs = self.vectors / np.sqrt(np.sum(np.power(self.vectors, 2), axis=1)).reshape(-1, 1)
         self.n_vectors = len(self.vectors)
         # --- --- crossover operator --- ---
@@ -120,9 +120,11 @@ class OREA:
         self.X, self.Y = self._archive_init()
         self.archive_size = len(self.X)
         self.theta = np.append(np.ones(self.n_vars), np.ones(self.n_vars))
+        #self.theta = np.ones(self.n_vars)
         self.surrogate = DACE(regr=regr_constant, corr=corr_gauss2, theta=self.theta,
                               thetaL=np.append(np.ones(self.n_vars) * self.COE_RANGE[0], np.ones(self.n_vars) * self.EXP_RANGE[0]),
                               thetaU=np.append(np.ones(self.n_vars) * self.COE_RANGE[1], np.ones(self.n_vars) * self.EXP_RANGE[1]))
+                              #thetaL=np.ones(self.n_vars) * self.COE_RANGE[0], thetaU=np.ones(self.n_vars) * self.COE_RANGE[1])
         self.Y_upperbound = np.max(self.Y, axis=0)
         self.pf_lowerbound = np.min(self.Y, axis=0)
         # --- pareto front variables ---
@@ -233,23 +235,18 @@ class OREA:
     """
     def run(self, current_iteration):
         self.variable_init(current_iteration)
-        current_n_levels = self.N_LEVELS
         while self.archive_size < self.EVALUATION_MAX:
             print(" ")
             print(" --- Labeling and Training Kriging model... --- ")
             self.label = np.zeros(self.archive_size)
-            last_n_levels = current_n_levels
             if len(self.pf_index) == self.archive_size:  # if all solutions are non-dominated:
                 self.label = np.ones(self.archive_size)
-                current_n_levels = 1
                 self.rp_index_in_pf = np.arange(0, self.archive_size)
             else:
-                self.label, current_n_levels, self.rp_index_in_pf = domination_based_ordinal_values(
+                self.label, self.rp_index_in_pf = domination_based_ordinal_values(
                     self.pf_index, self.Y, self.pf_upperbound, self.pf_lowerbound, n_levels=self.N_LEVELS, overfitting_coeff=self.OVERFITTING_COE, b_print=False)
-            if current_n_levels == last_n_levels:
-                self.surrogate.fit(self.X, self.label, self.DACE_TRAINING_ITERATION)
-            else:
-                self.surrogate.fit(self.X, self.label, self.DACE_TRAINING_ITERATION_INIT)
+            self.surrogate.fit(self.X, self.label, self.DACE_TRAINING_ITERATION)
+
             self.theta = self.surrogate.model["theta"]
             print("updated theta:", self.theta)
 
@@ -466,12 +463,15 @@ class OREA:
         print("Current IGD+ value: {:.4f}, IGD value: {:.4f}.".format(self.performance[0], self.performance[1]))
 
     def get_result(self):
+        t = time() - self.time
+        mins = str(np.int(t // 60))
+        secs = str(np.int(t % 60))
         if self.DEFAULT_PATH is False:
-            path = str(self.EVALUATION_MAX) + "_" + self.iteration + " igd " + str(np.around(self.performance[1], decimals=4)) + ".xlsx"
+            path = str(self.EVALUATION_MAX) + "_" + self.iteration + " igd " + str(np.around(self.performance[1], decimals=4)) + "_" + mins + "m" + secs + "s.xlsx"
         else:
             path = self.config['path_save'] + self.name + \
                    "/Total(" + str(self.n_vars) + "," + str(self.n_objs) + ")/" + \
-                   str(self.EVALUATION_MAX) + "_" + self.iteration + " igd " + str(np.around(self.performance[1], decimals=4)) + ".xlsx"
+                   str(self.EVALUATION_MAX) + "_" + self.iteration + " igd " + str(np.around(self.performance[1], decimals=4)) + "_" + mins + "m" + secs + "s.xlsx"
         self.recorder.save(path)
         return self.ps, self.performance[1]
 

@@ -119,7 +119,7 @@ def domination_based_ordinal_values(pf_index, archive_fitness, pf_upperbound, pf
     if b_print:
         print(label[-2:], "time for labeling operation: {:.5f}".format(time()-start))
 
-    return label, current_n_levels, labeled_index_in_pf
+    return label, labeled_index_in_pf
 
 
 

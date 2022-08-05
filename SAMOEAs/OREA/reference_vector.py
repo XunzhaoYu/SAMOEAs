@@ -13,11 +13,11 @@ def generate_vectors(n_objs, layer=1, h=2, h2=1):
     if layer == 1:  # method adopted by Xunzhao
         reference_vectors = (1.0 / 3) / n_objs + 2.0 / 3 * reference_vectors
         reference_vectors = np.append(reference_vectors, np.ones((1, n_objs)) * 1.0 / n_objs, axis=0)
-    elif layer == 2:  # method adopted in the publication: An Evolutionary Many-Objective Optimization Algorithm Based on Dominance and Decomposition
+    elif layer == 2 and h2>0:  # method adopted in the publication: An Evolutionary Many-Objective Optimization Algorithm Based on Dominance and Decomposition
         weight_range = np.array((h2,) * n_objs)
         reference_vectors2 = np.array([i for i in itertools.product(*(range(i + 1) for i in weight_range)) if sum(i) == h2], dtype=float) / h2
         reference_vectors = np.append(reference_vectors, 0.5 / n_objs + 0.5 * reference_vectors2, axis=0)
-    elif layer == 3:
+    elif layer == 3 and h2>0:
         weight_range = np.array((h2,) * n_objs)
         reference_vectors2 = np.array([i for i in itertools.product(*(range(i + 1) for i in weight_range)) if sum(i) == h2], dtype=float) / h2
         reference_vectors = np.append(reference_vectors, 0.5 / n_objs + 0.5 * reference_vectors2, axis=0)
