@@ -1,4 +1,4 @@
-# DTLZ configs:
+# WFG configs:
 ## problem setup:
 x_dim: 10
 y_dim: 3
@@ -20,7 +20,7 @@ mutation_args: [0.0, 20] # probability, distribution_index, 0.0 pro indicates 1.
 #(The parameters of reference vectors are fixed.)
 
 # data_IO:
-path_pf: 'problems/DTLZ/'
+path_pf: 'problems/WFG/'
 path_save: 'results/'
 
 

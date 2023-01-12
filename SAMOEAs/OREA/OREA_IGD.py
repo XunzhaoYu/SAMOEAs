@@ -24,11 +24,13 @@ from tools.loader import *
 """ Written by Xun-Zhao Yu (yuxunzhao@gmail.com). Last update: 2023-Jan-12.
 X. Yu, X. Yao, Y. Wang, L. Zhu, and D. Filev, “Domination-based ordinal regression for expensive multi-objective optimization,” 
 in Proceedings of the 2019 IEEE Symposium Series on Computational Intelligence (SSCI’19), 2019, pp. 2058–2065.
+
+In comparison to OREA.py, this IGD version will calculate IGD and IGD+ values during the optimization. IGD results will be saved in .xlsx file.
 """
 
 
 class OREA:
-    def __init__(self, config, name, dataset, b_default_path=True):
+    def __init__(self, config, name, dataset, pf, b_default_path=True):
         self.config = deepcopy(config)
         self.DEFAULT_PATH = b_default_path
         # --- problem setups ---
@@ -44,6 +46,9 @@ class OREA:
             self.lowerbound = self.dataset.get_bounds(upper=False)
         else:
             self.lowerbound = np.array(self.config['x_lowerbound'])
+        self.true_pf = pf
+        self.indicator_IGD_plus = inverted_generational_distance_plus(reference_front=self.true_pf)
+        self.indicator_IGD = inverted_generational_distance(reference_front=self.true_pf)
 
         # --- surrogate setups ---
         self.N_LEVELS = 10  # self.config['n_levels']
@@ -106,6 +111,7 @@ class OREA:
         self.region_id = self.region_counter = None
         self.rp_region_set = self.non_empty_region_set = self.candidate_region_set = None
         # --- recorder ---
+        self.performance = np.zeros(2)
         self.recorder = None
 
     """
@@ -155,8 +161,11 @@ class OREA:
         self.non_empty_region_set = []  # the set of regions with at least one non-dominated solution.
         self.candidate_region_set = []  # the set of regions with the least non-dominated solutions, should be updated once non-dominated solutions are changed.
         # --- recorder ---
+        self.performance[0] = self.indicator_IGD_plus.compute(self.pf)
+        self.performance[1] = self.indicator_IGD.compute(self.pf)
+        print("Initial IGD+ value: {:.4f}, IGD value: {:.4f}.".format(self.performance[0], self.performance[1]))
         self.recorder = Recorder(self.name)
-        self.recorder.init(self.X, self.Y)
+        self.recorder.init(self.X, self.Y, self.performance, ['IGD+', 'IGD'])
         if self.DEFAULT_PATH is False:
             path = str(self.EVALUATION_INIT) + "_" + self.iteration + ".xlsx"
             self.recorder.save(path)
@@ -436,7 +445,10 @@ class OREA:
         for new_index in range(self.N_REPRODUCTION):
             index = self.archive_size - self.N_REPRODUCTION + new_index
             self.ps, self.pf = self.get_ps(self.ps, self.pf, np.array([self.new_point[new_index]]), np.array([self.new_objs[new_index]]), index)
-            self.recorder.write(index+1, self.new_point[new_index], self.new_objs[new_index])
+            if self.pf_changed:
+                self.performance[0] = self.indicator_IGD_plus.compute(self.pf)
+                self.performance[1] = self.indicator_IGD.compute(self.pf)
+            self.recorder.write(index+1, self.new_point[new_index], self.new_objs[new_index], self.performance)
         print("update archive to keep all individuals non-dominated. ", np.shape(self.ps))
 
         # update three bounds for pf, and also update normalized pf
@@ -456,17 +468,20 @@ class OREA:
         # print results
         t = time() - self.time
         print("OREA, Evaluation Count: {:d}.  Total time: {:.0f} mins, {:.2f} secs.".format(self.archive_size, t // 60, t % 60))
+        print("Current IGD+ value: {:.4f}, IGD value: {:.4f}.".format(self.performance[0], self.performance[1]))
 
     def get_result(self):
         t = time() - self.time
         mins = str(np.int(t // 60))
         secs = str(np.int(t % 60))
         if self.DEFAULT_PATH is False:
-            path = str(self.EVALUATION_MAX) + "_" + self.iteration + "_" + mins + "m" + secs + "s.xlsx"
+            path = str(self.EVALUATION_MAX) + "_" + self.iteration + " igd " + str(np.around(self.performance[1], decimals=4)) + \
+                   " igd+ " + str(np.around(self.performance[0], decimals=4)) + "_" + mins + "m" + secs + "s.xlsx"
         else:
             path = self.config['path_save'] + self.name + \
                    "/Total(" + str(self.n_vars) + "," + str(self.n_objs) + ")/" + \
-                   str(self.EVALUATION_MAX) + "_" + self.iteration + "_" + mins + "m" + secs + "s.xlsx"
+                   str(self.EVALUATION_MAX) + "_" + self.iteration + " igd " + str(np.around(self.performance[1], decimals=4)) + \
+                   " igd+ " + str(np.around(self.performance[0], decimals=4)) + "_" + mins + "m" + secs + "s.xlsx"
         self.recorder.save(path)
-        return self.ps
+        return self.ps, self.performance[1]
 

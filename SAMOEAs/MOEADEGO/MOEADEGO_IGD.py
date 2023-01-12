@@ -16,6 +16,7 @@ from SAMOEAs.MOEADEGO.fuzzyCM import *
 from SAMOEAs.MOEADEGO.cal_EI import *
 # --- optimization libraries ---
 from optimization.operators.mutation_operator import *
+from optimization.performance_indicators import *
 # --- tools ---
 from tools.recorder import *
 from tools.loader import *
@@ -24,6 +25,7 @@ from tools.loader import *
 Q. Zhang, W. Liu, E. Tsang, and B. Virginas, “Expensive multiobjective optimization by MOEA/D with gaussian process model,” 
 IEEE Transactions on Evolutionary Computation, vol. 14, no. 3, pp. 456–474, 2010.
 
+In comparison to MOEADEGO.py, this IGD version will calculate IGD and IGD+ values during the optimization. IGD results will be saved in .xlsx file.
 
 Method: 'augmented_Tchebycheff' and 'Weight_sum' need to be validated before using them.
 
@@ -42,7 +44,7 @@ In summary, five modifications are made to speed up MOEA/D-EGO:
     5. Different repair strategy in MOEA/D-DE.
 """
 class MOEADEGO:
-    def __init__(self, config, name, dataset, b_default_path=True):
+    def __init__(self, config, name, dataset, pf, b_default_path=True):
         self.config = deepcopy(config)
         self.DEFAULT_PATH = b_default_path
         # --- problem setups ---
@@ -58,6 +60,9 @@ class MOEADEGO:
             self.lowerbound = self.dataset.get_bounds(upper=False)
         else:
             self.lowerbound = np.array(self.config['x_lowerbound'])
+        self.true_pf = pf
+        self.indicator_IGD_plus = inverted_generational_distance_plus(reference_front=self.true_pf)
+        self.indicator_IGD = inverted_generational_distance(reference_front=self.true_pf)
 
         # --- surrogate setups ---
         self.COE_RANGE = [1e-5, 100.]  # self.config['coe_range']  # range of coefficient (theta)
@@ -126,6 +131,7 @@ class MOEADEGO:
         self.centers = None
         self.g_min = None
         # --- recorder ---
+        self.performance = np.zeros(2)
         self.recorder = None
 
     """
@@ -162,8 +168,11 @@ class MOEADEGO:
         print(self.pf)
 
         # --- recorder ---
+        self.performance[0] = self.indicator_IGD_plus.compute(self.pf)
+        self.performance[1] = self.indicator_IGD.compute(self.pf)
+        print("Initial IGD+ value: {:.4f}, IGD value: {:.4f}.".format(self.performance[0], self.performance[1]))
         self.recorder = Recorder(self.name)
-        self.recorder.init(self.X, self.Y)
+        self.recorder.init(self.X, self.Y, self.performance, ['IGD+', 'IGD'])
         if self.DEFAULT_PATH is False:
             path = str(self.EVALUATION_INIT) + "_" + self.iteration + ".xlsx"
             self.recorder.save(path)
@@ -464,25 +473,31 @@ class MOEADEGO:
         for new_index in range(self.n_reproduction):
             index = self.archive_size - self.n_reproduction + new_index
             self.ps, self.pf = self._ps_update(self.ps, self.pf, np.array([self.new_point[new_index]]), np.array([self.new_objs[new_index]]), index)
-            self.recorder.write(index+1, self.new_point[new_index], self.new_objs[new_index])
+            if self.pf_changed:
+                self.performance[0] = self.indicator_IGD_plus.compute(self.pf)
+                self.performance[1] = self.indicator_IGD.compute(self.pf)
+            self.recorder.write(index+1, self.new_point[new_index], self.new_objs[new_index], self.performance)
         print("update archive to keep all individuals non-dominated. ", np.shape(self.ps))
 
         # print results
         t = time() - self.time
         print("MOEA/D-EGO, Evaluation Count: {:d}.  Total time: {:.0f} mins, {:.2f} secs.".format(self.archive_size, t // 60, t % 60))
+        print("Current IGD+ value: {:.4f}, IGD value: {:.4f}.".format(self.performance[0], self.performance[1]))
 
     def get_result(self):
         t = time() - self.time
         mins = str(np.int(t // 60))
         secs = str(np.int(t % 60))
         if self.DEFAULT_PATH is False:
-            path = str(self.EVALUATION_MAX) + "_" + self.iteration + "_" + mins + "m" + secs + "s.xlsx"
+            path = str(self.EVALUATION_MAX) + "_" + self.iteration + " igd " + str(np.around(self.performance[1], decimals=4)) + \
+                   " igd+ " + str(np.around(self.performance[0], decimals=4)) + "_" + mins + "m" + secs + "s.xlsx"
         else:
             path = self.config['path_save'] + self.name + \
                    "/Total(" + str(self.n_vars) + "," + str(self.n_objs) + ")/" + \
-                   str(self.EVALUATION_MAX) + "_" + self.iteration + "_" + mins + "m" + secs + "s.xlsx"
+                   str(self.EVALUATION_MAX) + "_" + self.iteration + " igd " + str(np.around(self.performance[1], decimals=4)) + \
+                   " igd+ " + str(np.around(self.performance[0], decimals=4)) + "_" + mins + "m" + secs + "s.xlsx"
         self.recorder.save(path)
-        return self.ps
+        return self.ps, self.performance[1]
 
 
 

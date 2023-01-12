@@ -14,6 +14,7 @@ from SAMOEAs.ParEGO.weights import *
 from optimization.operators.crossover_operator import *
 from optimization.operators.mutation_operator import *
 from optimization.EI import *
+from optimization.performance_indicators import *
 # --- tools ---
 from tools.recorder import *
 from tools.loader import *
@@ -21,11 +22,13 @@ from tools.loader import *
 """ Written by Xun-Zhao Yu (yuxunzhao@gmail.com). Last update: 2023-Jan-12.
 J. Knowles, “ParEGO: A hybrid algorithm with on-line landscape approximation for expensive multiobjective optimization problems,” 
 IEEE Transactions on Evolutionary Computation, vol. 10, no. 1, pp. 50–66, 2006.
+
+In comparison to ParEGO.py, this IGD version will calculate IGD and IGD+ values during the optimization. IGD results will be saved in .xlsx file.
 """
 
 
 class ParEGO:
-    def __init__(self, config, name, dataset, b_default_path=True):
+    def __init__(self, config, name, dataset, pf, b_default_path=True):
         self.config = deepcopy(config)
         self.DEFAULT_PATH = b_default_path
         # --- problem setups ---
@@ -41,6 +44,9 @@ class ParEGO:
             self.lowerbound = self.dataset.get_bounds(upper=False)
         else:
             self.lowerbound = np.array(self.config['x_lowerbound'])
+        self.true_pf = pf
+        self.indicator_IGD_plus = inverted_generational_distance_plus(reference_front=self.true_pf)
+        self.indicator_IGD = inverted_generational_distance(reference_front=self.true_pf)
 
         # --- surrogate setups ---
         self.COE_RANGE = [1e-5, 100.]  # self.config['coe_range']
@@ -94,6 +100,7 @@ class ParEGO:
         self.Y_lowerbound = None  # lowerbound of Y.
         self.Y_range = None  # self.Y_upperbound - self.Y_lowerbound
         # --- recorder ---
+        self.performance = np.zeros(2)
         self.recorder = None
 
     """
@@ -129,8 +136,11 @@ class ParEGO:
         print("Objective range:", self.Y_range)
 
         # --- recorder ---
+        self.performance[0] = self.indicator_IGD_plus.compute(self.pf)
+        self.performance[1] = self.indicator_IGD.compute(self.pf)
+        print("Initial IGD+ value: {:.4f}, IGD value: {:.4f}.".format(self.performance[0], self.performance[1]))
         self.recorder = Recorder(self.name)
-        self.recorder.init(self.X, self.Y)
+        self.recorder.init(self.X, self.Y, self.performance, ['IGD+', 'IGD'])
         if self.DEFAULT_PATH is False:
             path = str(self.EVALUATION_INIT) + "_" + self.iteration + ".xlsx"
             self.recorder.save(path)
@@ -316,24 +326,30 @@ class ParEGO:
         # after used to initialize the kriging model, the archive then used to save Pareto optimal solutions
         self.pf_changed = False
         self.ps, self.pf = self.get_ps(self.ps, self.pf, self.new_point, self.new_objs, self.archive_size - 1)
-        self.recorder.write(self.archive_size, self.new_point[0], self.new_objs[0])
+        if self.pf_changed:
+            self.performance[0] = self.indicator_IGD_plus.compute(self.pf)
+            self.performance[1] = self.indicator_IGD.compute(self.pf)
+        self.recorder.write(self.archive_size, self.new_point[0], self.new_objs[0], self.performance)
 
         # print results
         t = time() - self.time
         print("ParEGO, Evaluation Count: {:d}.  Total time: {:.0f} mins, {:.2f} secs.".format(self.archive_size, t // 60, t % 60))
+        print("Current IGD+ value: {:.4f}, IGD value: {:.4f}.".format(self.performance[0], self.performance[1]))
 
     def get_result(self):
         t = time() - self.time
         mins = str(np.int(t // 60))
         secs = str(np.int(t % 60))
         if self.DEFAULT_PATH is False:
-            path = str(self.EVALUATION_MAX) + "_" + self.iteration + "_" + mins + "m" + secs + "s.xlsx"
+            path = str(self.EVALUATION_MAX) + "_" + self.iteration + " igd " + str(np.around(self.performance[1], decimals=4)) + \
+                   " igd+ " + str(np.around(self.performance[0], decimals=4)) + "_" + mins + "m" + secs + "s.xlsx"
         else:
             path = self.config['path_save'] + self.name + \
                    "/Total(" + str(self.n_vars) + "," + str(self.n_objs) + ")/" + \
-                   str(self.EVALUATION_MAX) + "_" + self.iteration + "_" + mins + "m" + secs + "s.xlsx"
+                   str(self.EVALUATION_MAX) + "_" + self.iteration + " igd " + str(np.around(self.performance[1], decimals=4)) + \
+                   " igd+ " + str(np.around(self.performance[0], decimals=4)) + "_" + mins + "m" + secs + "s.xlsx"
         self.recorder.save(path)
-        return self.ps
+        return self.ps, self.performance[1]
 
 
 
