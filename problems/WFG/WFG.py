@@ -1,39 +1,42 @@
+# -*- coding: UTF-8 -*-
 import numpy as np
 from pyDOE import lhs
-#from pymoo.core.problem import Problem
-#from pymoo.problems.many import generic_sphere, get_ref_dirs
-#from pymoo.util.function_loader import load_function
-#from pymoo.util.misc import powerset
+import yaml  # for test
 
 
+""" Written by Xun-Zhao Yu (yuxunzhao@gmail.com). Last update: 2023-Jan-12.
+WFG Multi-/Many-Objective Optimization Benchmark functions.
+
+Example:
+dataset = WFG1(config)
+x, y = dataset.sample(n_samples=100)
+
+Return:
+x shape: (n_samples, n_vars)
+y shape: (n_samples, n_objs)
+"""
 class WFG:
-    def __init__(self, n_var, n_obj, k=None, l=None, **kwargs):
-        self.n_var = n_var
-        self.n_obj = n_obj
-        self.lowerbound = 0.0
-        self.upperbound = 2 * np.arange(1, n_var + 1).astype(float)
+    def __init__(self, config, k=None, l=None):
+        self.n_vars = config['x_dim']
+        self.n_objs = config['y_dim']
+        self.lowerbound = np.zeros(self.n_vars)
+        self.upperbound = 2 * np.arange(1, self.n_vars + 1).astype(float)
 
-        self.S = np.arange(2, 2 * self.n_obj + 1, 2).astype(float)
-        self.A = np.ones(self.n_obj - 1)
+        self.S = np.arange(2, 2 * self.n_objs + 1, 2).astype(float)
+        self.A = np.ones(self.n_objs - 1)
 
-        if k:
+        if k:  # k should be dividable by (n_objs - 1)
             self.k = k
         else:
-            """
-            if n_obj == 2:
-                self.k = 4
-            else:
-                self.k = 2 * (n_obj - 1)
-            """
-            self.k = self.n_obj-1
+            self.k = self.n_objs-1
 
         if l:
             self.l = l
         else:
-            self.l = n_var - self.k
+            self.l = self.n_vars - self.k
         print("k:", self.k, ".  l:", self.l)
 
-        self.validate(self.l, self.k, self.n_obj)
+        self.validate(self.l, self.k, self.n_objs)
 
     def get_bounds(self, upper=True):
         if upper:
@@ -45,11 +48,9 @@ class WFG:
         if n_obj < 2:
             raise ValueError('WFG problems must have two or more objectives.')
         if not k % (n_obj - 1) == 0:
-            raise ValueError('Position parameter (k) must be divisible by number of objectives minus one.')
-        #if k < 4:
-        #    raise ValueError('Position parameter (k) must be greater or equal than 4.')
+            raise ValueError('Position parameter (k) must be divisible by number of objectives (n_objs) minus one.')
         if (k + l) < n_obj:
-            raise ValueError('Sum of distance and position parameters must be greater than num. of objs. (k + l >= M).')
+            raise ValueError('Sum of distance and position parameters must be greater than num. of objs. (k + l >= n_objs).')
 
     def _post(self, t, a):
         x = []
@@ -69,45 +70,20 @@ class WFG:
         X = np.column_stack([K, suffix])
         return X * self.upperbound
 
-    """
-    def _calc_pareto_set_extremes(self):
-        ps = np.ones((2 ** self.k, self.k))
-        for i, s in enumerate(powerset(np.arange(self.k))):
-            ps[i, s] = 0
-        return self._positional_to_optimal(ps)
+    def evaluate(self, x):
+        return
 
-    def _calc_pareto_set_interior(self, n_points):
-        return self._positional_to_optimal(self._rand_optimal_position(n_points))
+    def sample(self, n_samples):
+        """
+        :param n_samples: The number of samples collected from a WFG function. Type: int
+        :return: The sampled data x and evaluated fitness y.
+        """
+        x = lhs(self.n_vars, n_samples)
+        y = self.evaluate(x)
+        return x, y
 
-    def _calc_pareto_set(self, n_points=500, *args, **kwargs):
-        extremes = self._calc_pareto_set_extremes()
-        interior = self._calc_pareto_set_interior(n_points - len(extremes))
-        return np.row_stack([extremes, interior])
-
-    def _calc_pareto_front(self, ref_dirs=None, n_iterations=200, points_each_iteration=200, *args, **kwargs):
-        pf = self.evaluate(self._calc_pareto_set_extremes(), return_values_of=["F"])
-
-        if ref_dirs is None:
-            ref_dirs = get_ref_dirs(self.n_obj)
-
-        for k in range(n_iterations):
-            _pf = self.evaluate(self._calc_pareto_set_interior(points_each_iteration), return_values_of=["F"])
-            pf = np.row_stack([pf, _pf])
-
-            ideal, nadir = pf.min(axis=0), pf.max(axis=0)
-
-            N = (pf - ideal) / (nadir-ideal)
-            dist_matrix = load_function("calc_perpendicular_distance")(N, ref_dirs)
-
-            closest = np.argmin(dist_matrix, axis=0)
-            pf = pf[closest]
-
-        pf = pf[np.lexsort(pf.T[::-1])]
-        return pf
-    """
 
 class WFG1(WFG):
-
     @staticmethod
     def t1(x, n, k):
         x[:, k:n] = _transformation_shift_linear(x[:, k:n], 0.35)
@@ -136,15 +112,19 @@ class WFG1(WFG):
         return np.column_stack(t)
 
     def evaluate(self, x):
+        """
+        :param x: The set of samples to be evaluated. Type: 2darray. Shape: (n_samples, n_vars).
+        :return: The set of evaluated samples. Type: 2darray. Shape: (n_samples, n_objs).
+        """
         y = x / self.upperbound
-        y = WFG1.t1(y, self.n_var, self.k)
-        y = WFG1.t2(y, self.n_var, self.k)
-        y = WFG1.t3(y, self.n_var)
-        y = WFG1.t4(y, self.n_obj, self.n_var, self.k)
+        y = WFG1.t1(y, self.n_vars, self.k)
+        y = WFG1.t2(y, self.n_vars, self.k)
+        y = WFG1.t3(y, self.n_vars)
+        y = WFG1.t4(y, self.n_objs, self.n_vars, self.k)
 
         y = self._post(y, self.A)
 
-        h = [_shape_convex(y[:, :-1], m + 1) for m in range(self.n_obj - 1)]
+        h = [_shape_convex(y[:, :-1], m + 1) for m in range(self.n_objs - 1)]
         h.append(_shape_mixed(y[:, 0], alpha=1.0, A=5.0))
 
         return self._calculate(y, self.S, h)
@@ -154,14 +134,12 @@ class WFG1(WFG):
 
 
 class WFG2(WFG):
-
     def validate(self, l, k, n_obj):
         super().validate(l, k, n_obj)
         if validate_wfg2_wfg3(l):
             self.k = 2 * self.k
-            self.l = self.n_var - self.k
+            self.l = self.n_vars - self.k
             print("new k:", self.k, ".  l:", self.l)
-
 
     @staticmethod
     def t2(x, n, k):
@@ -190,50 +168,51 @@ class WFG2(WFG):
         return np.column_stack(t)
 
     def evaluate(self, x):
+        """
+        :param x: The set of samples to be evaluated. Type: 2darray. Shape: (n_samples, n_vars).
+        :return: The set of evaluated samples. Type: 2darray. Shape: (n_samples, n_objs).
+        """
         y = x / self.upperbound
-        y = WFG1.t1(y, self.n_var, self.k)
-        y = WFG2.t2(y, self.n_var, self.k)
-        y = WFG2.t3(y, self.n_obj, self.n_var, self.k)
+        y = WFG1.t1(y, self.n_vars, self.k)
+        y = WFG2.t2(y, self.n_vars, self.k)
+        y = WFG2.t3(y, self.n_objs, self.n_vars, self.k)
         y = self._post(y, self.A)
 
-        h = [_shape_convex(y[:, :-1], m + 1) for m in range(self.n_obj - 1)]
+        h = [_shape_convex(y[:, :-1], m + 1) for m in range(self.n_objs - 1)]
         h.append(_shape_disconnected(y[:, 0], alpha=1.0, beta=1.0, A=5.0))
 
         return self._calculate(y, self.S, h)
 
 
 class WFG3(WFG):
-
-    def __init__(self, n_var, n_obj, k=None, **kwargs):
-        super().__init__(n_var, n_obj, k=k, **kwargs)
+    def __init__(self, config):
+        super().__init__(config)
         self.A[1:] = 0
 
     def validate(self, l, k, n_obj):
         super().validate(l, k, n_obj)
         if validate_wfg2_wfg3(l):
             self.k = 2 * self.k
-            self.l = self.n_var - self.k
+            self.l = self.n_vars - self.k
             print("new k:", self.k, ".  l:", self.l)
 
     def evaluate(self, x):
+        """
+        :param x: The set of samples to be evaluated. Type: 2darray. Shape: (n_samples, n_vars).
+        :return: The set of evaluated samples. Type: 2darray. Shape: (n_samples, n_objs).
+        """
         y = x / self.upperbound
-        y = WFG1.t1(y, self.n_var, self.k)
-        y = WFG2.t2(y, self.n_var, self.k)
-        y = WFG2.t3(y, self.n_obj, self.n_var, self.k)
+        y = WFG1.t1(y, self.n_vars, self.k)
+        y = WFG2.t2(y, self.n_vars, self.k)
+        y = WFG2.t3(y, self.n_objs, self.n_vars, self.k)
         y = self._post(y, self.A)
 
-        h = [_shape_linear(y[:, :-1], m + 1) for m in range(self.n_obj)]
+        h = [_shape_linear(y[:, :-1], m + 1) for m in range(self.n_objs)]
 
         return self._calculate(y, self.S, h)
 
-    # def _calc_pareto_front(self, ref_dirs=None):
-    #     if ref_dirs is None:
-    #         ref_dirs = get_ref_dirs(self.n_obj)
-    #     return ref_dirs * self.S
-
 
 class WFG4(WFG):
-
     @staticmethod
     def t1(x):
         return _transformation_shift_multi_modal(x, 30.0, 10.0, 0.35)
@@ -246,45 +225,41 @@ class WFG4(WFG):
         return np.column_stack(t)
 
     def evaluate(self, x):
+        """
+        :param x: The set of samples to be evaluated. Type: 2darray. Shape: (n_samples, n_vars).
+        :return: The set of evaluated samples. Type: 2darray. Shape: (n_samples, n_objs).
+        """
         y = x / self.upperbound
         y = WFG4.t1(y)
-        y = WFG4.t2(y, self.n_obj, self.k)
+        y = WFG4.t2(y, self.n_objs, self.k)
         y = self._post(y, self.A)
 
-        h = [_shape_concave(y[:, :-1], m + 1) for m in range(self.n_obj)]
+        h = [_shape_concave(y[:, :-1], m + 1) for m in range(self.n_objs)]
 
         return self._calculate(y, self.S, h)
 
-    # def _calc_pareto_front(self, ref_dirs=None):
-    #     if ref_dirs is None:
-    #         ref_dirs = get_ref_dirs(self.n_obj)
-    #     return generic_sphere(ref_dirs) * self.S
-
 
 class WFG5(WFG):
-
     @staticmethod
     def t1(x):
         return _transformation_param_deceptive(x, A=0.35, B=0.001, C=0.05)
 
     def evaluate(self, x):
+        """
+        :param x: The set of samples to be evaluated. Type: 2darray. Shape: (n_samples, n_vars).
+        :return: The set of evaluated samples. Type: 2darray. Shape: (n_samples, n_objs).
+        """
         y = x / self.upperbound
         y = WFG5.t1(y)
-        y = WFG4.t2(y, self.n_obj, self.k)
+        y = WFG4.t2(y, self.n_objs, self.k)
         y = self._post(y, self.A)
 
-        h = [_shape_concave(y[:, :-1], m + 1) for m in range(self.n_obj)]
+        h = [_shape_concave(y[:, :-1], m + 1) for m in range(self.n_objs)]
 
         return self._calculate(y, self.S, h)
 
-    # def _calc_pareto_front(self, ref_dirs=None):
-    #     if ref_dirs is None:
-    #         ref_dirs = get_ref_dirs(self.n_obj)
-    #     return generic_sphere(ref_dirs) * self.S
-
 
 class WFG6(WFG):
-
     @staticmethod
     def t2(x, m, n, k):
         gap = k // (m - 1)
@@ -293,23 +268,21 @@ class WFG6(WFG):
         return np.column_stack(t)
 
     def evaluate(self, x):
+        """
+        :param x: The set of samples to be evaluated. Type: 2darray. Shape: (n_samples, n_vars).
+        :return: The set of evaluated samples. Type: 2darray. Shape: (n_samples, n_objs).
+        """
         y = x / self.upperbound
-        y = WFG1.t1(y, self.n_var, self.k)
-        y = WFG6.t2(y, self.n_obj, self.n_var, self.k)
+        y = WFG1.t1(y, self.n_vars, self.k)
+        y = WFG6.t2(y, self.n_objs, self.n_vars, self.k)
         y = self._post(y, self.A)
 
-        h = [_shape_concave(y[:, :-1], m + 1) for m in range(self.n_obj)]
+        h = [_shape_concave(y[:, :-1], m + 1) for m in range(self.n_objs)]
 
         return self._calculate(y, self.S, h)
 
-    # def _calc_pareto_front(self, ref_dirs=None):
-    #     if ref_dirs is None:
-    #         ref_dirs = get_ref_dirs(self.n_obj)
-    #     return generic_sphere(ref_dirs) * self.S
-
 
 class WFG7(WFG):
-
     @staticmethod
     def t1(x, k):
         for i in range(k):
@@ -318,24 +291,22 @@ class WFG7(WFG):
         return x
 
     def evaluate(self, x):
+        """
+        :param x: The set of samples to be evaluated. Type: 2darray. Shape: (n_samples, n_vars).
+        :return: The set of evaluated samples. Type: 2darray. Shape: (n_samples, n_objs).
+        """
         y = x / self.upperbound
         y = WFG7.t1(y, self.k)
-        y = WFG1.t1(y, self.n_var, self.k)
-        y = WFG4.t2(y, self.n_obj, self.k)
+        y = WFG1.t1(y, self.n_vars, self.k)
+        y = WFG4.t2(y, self.n_objs, self.k)
         y = self._post(y, self.A)
 
-        h = [_shape_concave(y[:, :-1], m + 1) for m in range(self.n_obj)]
+        h = [_shape_concave(y[:, :-1], m + 1) for m in range(self.n_objs)]
 
         return self._calculate(y, self.S, h)
 
-    # def _calc_pareto_front(self, ref_dirs=None):
-    #     if ref_dirs is None:
-    #         ref_dirs = get_ref_dirs(self.n_obj)
-    #     return generic_sphere(ref_dirs) * self.S
-
 
 class WFG8(WFG):
-
     @staticmethod
     def t1(x, n, k):
         ret = []
@@ -345,13 +316,17 @@ class WFG8(WFG):
         return np.column_stack(ret)
 
     def evaluate(self, x):
+        """
+        :param x: The set of samples to be evaluated. Type: 2darray. Shape: (n_samples, n_vars).
+        :return: The set of evaluated samples. Type: 2darray. Shape: (n_samples, n_objs).
+        """
         y = x / self.upperbound
-        y[:, self.k:self.n_var] = WFG8.t1(y, self.n_var, self.k)
-        y = WFG1.t1(y, self.n_var, self.k)
-        y = WFG4.t2(y, self.n_obj, self.k)
+        y[:, self.k:self.n_vars] = WFG8.t1(y, self.n_vars, self.k)
+        y = WFG1.t1(y, self.n_vars, self.k)
+        y = WFG4.t2(y, self.n_objs, self.k)
         y = self._post(y, self.A)
 
-        h = [_shape_concave(y[:, :-1], m + 1) for m in range(self.n_obj)]
+        h = [_shape_concave(y[:, :-1], m + 1) for m in range(self.n_objs)]
 
         return self._calculate(y, self.S, h)
 
@@ -366,12 +341,11 @@ class WFG8(WFG):
 
             K = np.column_stack([K, suffix[:, None]])
 
-        ret = K * (2 * (np.arange(self.n_var) + 1))
+        ret = K * (2 * (np.arange(self.n_vars) + 1))
         return ret
 
 
 class WFG9(WFG):
-
     @staticmethod
     def t1(x, n):
         ret = []
@@ -394,12 +368,16 @@ class WFG9(WFG):
         return np.column_stack(t)
 
     def evaluate(self, x):
+        """
+        :param x: The set of samples to be evaluated. Type: 2darray. Shape: (n_samples, n_vars).
+        :return: The set of evaluated samples. Type: 2darray. Shape: (n_samples, n_objs).
+        """
         y = x / self.upperbound
-        y[:, :self.n_var - 1] = WFG9.t1(y, self.n_var)
-        y = WFG9.t2(y, self.n_var, self.k)
-        y = WFG9.t3(y, self.n_obj, self.n_var, self.k)
+        y[:, :self.n_vars - 1] = WFG9.t1(y, self.n_vars)
+        y = WFG9.t2(y, self.n_vars, self.k)
+        y = WFG9.t3(y, self.n_objs, self.n_vars, self.k)
 
-        h = [_shape_concave(y[:, :-1], m + 1) for m in range(self.n_obj)]
+        h = [_shape_concave(y[:, :-1], m + 1) for m in range(self.n_objs)]
 
         return self._calculate(y, self.S, h)
 
@@ -415,22 +393,13 @@ class WFG9(WFG):
             val = m.sum(axis=1) / m.shape[1]
             X[:, i] = 0.35 ** ((0.02 + 1.96 * val) ** -1)
 
-        ret = X * (2 * (np.arange(self.n_var) + 1))
+        ret = X * (2 * (np.arange(self.n_vars) + 1))
         return ret
-
-    """
-    def _calc_pareto_front(self, ref_dirs=None):
-        if ref_dirs is None:
-            ref_dirs = get_ref_dirs(self.n_obj)
-        return generic_sphere(ref_dirs) * self.S
-    """
 
 
 # ---------------------------------------------------------------------------------------------------------
 # TRANSFORMATIONS
 # ---------------------------------------------------------------------------------------------------------
-
-
 def _transformation_shift_linear(value, shift=0.35):
     return correct_to_01(np.fabs(value - shift) / np.fabs(np.floor(shift - value) + shift))
 
@@ -475,8 +444,6 @@ def _transformation_param_deceptive(y, A=0.35, B=0.001, C=0.05):
 # ---------------------------------------------------------------------------------------------------------
 # REDUCTION
 # ---------------------------------------------------------------------------------------------------------
-
-
 def _reduction_weighted_sum(y, w):
     return correct_to_01(np.dot(y, w) / w.sum())
 
@@ -503,8 +470,6 @@ def _reduction_non_sep(y, A):
 # ---------------------------------------------------------------------------------------------------------
 # SHAPE
 # ---------------------------------------------------------------------------------------------------------
-
-
 def _shape_concave(x, m):
     M = x.shape[1]
     if m == 1:
@@ -555,15 +520,14 @@ def _shape_disconnected(x, alpha=1.0, beta=1.0, A=5.0):
 # ---------------------------------------------------------------------------------------------------------
 # UTIL
 # ---------------------------------------------------------------------------------------------------------
-
 def validate_wfg2_wfg3(l):
     if not l % 2 == 0:
-        #raise ValueError('In WFG2/WFG3 the distance-related parameter (l) must be divisible by 2.')
         print("In WFG2/WFG3 the distance-related parameter (l) must be divisible by 2.")
         print("Set new k and l ...")
         return True
     else:
         return False
+
 
 def correct_to_01(X, epsilon=1.0e-10):
     X[np.logical_and(X < 0, X >= 0 - epsilon)] = 0
@@ -575,9 +539,13 @@ def correct_to_01(X, epsilon=1.0e-10):
 
 
 def WFG_validation(WFG_list):
+    cfg_filename = '../../config_WFG.yml'
+    with open(cfg_filename, 'r') as ymlfile:
+        config = yaml.load(ymlfile)
+
     if 1 in WFG_list:
         print('--- WFG 1 ---')
-        dataset = WFG1(10, 3)
+        dataset = WFG1(config)
         X = np.array([[1.08854981319285, 2.88336864817126, 2.26151969048427, 6.85587897325909, 5.50774672114278, 11.3619491740763, 0.993607643502324, 12.7476499626573, 9.51749373544387, 13.9469154321725],
                       [0.604916530645588, 2.83243236846361, 1.08564315191318, 1.65613202529189, 9.92817774785589, 8.67400816509106, 10.6090373570489, 2.20562483724899, 12.0117687538961, 2.33741938579107],
                       [1.26359517475495, 1.04213391542253, 4.80089481701664, 1.31305713165933, 9.23718752328934, 6.94795393584, 2.53950542445972, 5.07151257421173, 17.2228709914341, 0.9626573771487],
@@ -590,7 +558,7 @@ def WFG_validation(WFG_list):
 
     if 2 in WFG_list:
         print('--- WFG 2 ---')
-        dataset = WFG2(10, 3)
+        dataset = WFG2(config)
         X = np.array([[1.51215634670685, 1.98046188620202, 2.17123205516798, 4.28272264683346, 1.67560302649847, 7.45865072083838, 10.3456568199683, 3.17408245839211, 17.5922307989805, 2.22789613281489],
                       [1.65724228844236, 3.75148713154759, 3.80920112440229, 2.04674050857133, 4.71394745021335, 8.0987099046684, 2.21089005303561, 4.37336956825761, 13.0245498011878, 7.09552477899624]])
         Y = np.array([[0.823269169947225, 1.21047059380468, 3.7645144707503],
@@ -599,7 +567,7 @@ def WFG_validation(WFG_list):
 
     if 3 in WFG_list:
         print('--- WFG 3 ---')
-        dataset = WFG3(10, 3)
+        dataset = WFG3(config)
         X = np.array([[1.38663349883148, 1.39095701793336, 1.00651400424944, 1.08124749578659, 3.08488862377431, 7.97168781965395, 7.76075416049597, 2.66837163922627, 5.08502619704711, 15.0825267506388],
                       [0.857279299089974, 2.90178703928795, 0.562662124363031, 1.62200945196832, 9.21877546951233, 9.18323121613658, 12.9452537606931, 9.4066087893712, 11.1373467719423, 11.1228130773289],
                       [0.972828288318792, 3.30043205456895, 1.59130876555149, 1.25130637703317, 9.72493287754122, 1.25826747229887, 5.77792241569192, 12.8549248376846, 13.5182364945479, 13.0712479627488],
@@ -612,7 +580,7 @@ def WFG_validation(WFG_list):
 
     if 4 in WFG_list:
         print('--- WFG 4 ---')
-        dataset = WFG4(10, 3)
+        dataset = WFG4(config)
         X = np.array([[1.13783890382196, 0.39981342549122, 2.57104400359446, 7.38059326152385, 0.18024697236177, 4.76511856888059, 4.94868612529733, 5.03603867466566, 1.57950371631846, 5.02059681386812],
                       [1.24461287529011, 3.47327010872662, 5.43623388146076, 7.94615451354421, 5.40004134634819, 1.01695950794045, 5.48432969385307, 1.62513156036691, 5.43756079090007, 16.845612279212],
                       [1.3483917307458, 3.40633721753899, 5.78151771907546, 2.63492324427142, 6.94416921281742, 2.88016099935476, 13.1911070274896, 2.97957306442058, 3.87758428471048, 11.4314968749729],
@@ -625,7 +593,7 @@ def WFG_validation(WFG_list):
 
     if 5 in WFG_list:
         print('--- WFG 5 ---')
-        dataset = WFG5(10, 3)
+        dataset = WFG5(config)
         X = np.array([[1.2658018033216, 3.18868341877624, 3.21674728712595, 2.08766437576511, 1.87500134447649, 9.21098472567939, 2.30814691679358, 1.25584817131949, 17.7385278296678, 8.30370524977232],
                       [0.188427418427115, 1.8744784818475, 0.633157170511586, 2.73768679269978, 1.38430792507739, 7.15562649914803, 3.38867613467205, 12.2754868226584, 16.3339183981048, 9.32069651971608],
                       [1.30733068788624, 3.23996382627474, 1.51298734605049, 0.151738627922504, 7.10136607495888, 3.49080201399634, 12.3541209340065, 11.1733430579877, 4.44885294202544, 4.28396803065948],
@@ -638,7 +606,7 @@ def WFG_validation(WFG_list):
 
     if 6 in WFG_list:
         print('--- WFG 6 ---')
-        dataset = WFG6(10, 3)
+        dataset = WFG6(config)
         X = np.array([[1.94501871330945, 1.86960168990496, 1.96989048063627, 3.06779485183013, 4.84162319219383, 4.75928430895196, 5.85331053617453, 13.2513660474365, 0.510286690310382, 18.6552194512127],
                       [1.6382070126678, 1.92461292772802, 0.334566489815851, 3.72761590768986, 9.41104341445888, 5.74945077283758, 12.9618313158316, 0.717866352348218, 2.64811675978753, 14.0007923108559],
                       [0.939109813727533, 1.6506765026082, 1.71570362522649, 3.45508684333413, 4.53345202891128, 6.5766957587481, 13.8121946947571, 7.14665236217724, 17.2382558951885, 18.4541611792558],
@@ -651,7 +619,7 @@ def WFG_validation(WFG_list):
 
     if 7 in WFG_list:
         print('--- WFG 7 ---')
-        dataset = WFG7(10, 3)
+        dataset = WFG7(config)
         X = np.array([[0.337549438578628, 1.55921659024094, 4.94553476741995, 1.6283190933529, 4.19639449341452, 2.66295392887256, 6.3802812867656, 2.50662348019979, 11.3208749535504, 13.7398730938539],
                       [0.487202151742022, 0.964386388124292, 0.741882978573107, 3.3763597352786, 4.67878671847323, 3.79175127742979, 2.80345466394784, 3.99691703515509, 12.596150343545, 10.389220448287],
                       [0.431067575693884, 0.313436740339362, 4.54058194298759, 6.63495882913101, 5.36173766848859, 2.56462047169617, 1.6572427810141, 12.4029269120389, 13.4746843302705, 1.79733800927311],
@@ -664,15 +632,6 @@ def WFG_validation(WFG_list):
 
 """
 WFG_list = [1, 2, 3, 4, 5, 6, 7]
-#WFG_list = [1, 2, 3, 4]
 WFG_validation(WFG_list)
-"""
-n_vars = 10
-n_objs = 4
-dataset = WFG2(n_vars, n_objs)
-X = lhs(n_vars, 4)
-print(dataset.evaluate(X))
 #"""
 
-# 获取Pareto Front
-# 画图

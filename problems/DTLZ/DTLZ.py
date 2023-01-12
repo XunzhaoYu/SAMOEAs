@@ -4,8 +4,8 @@ from pyDOE import lhs
 import yaml  # for test
 
 
-""" Written by Xun-Zhao Yu (yuxunzhao@gmail.com). Last update: 2022-Mar-01.
-DTLZ Benchmark functions.
+""" Written by Xun-Zhao Yu (yuxunzhao@gmail.com). Last update: 2023-Jan-12.
+DTLZ Multi-/Many-Objective Optimization Benchmark functions.
 
 Example:
 dataset = DTLZ1(config)
@@ -19,6 +19,8 @@ class DTLZ:
     def __init__(self, config, k=None):
         self.n_vars = config['x_dim']
         self.n_objs = config['y_dim']
+        self.lowerbound = np.zeros(self.n_vars)
+        self.upperbound = np.ones(self.n_vars)
 
         if self.n_vars:
             self.k = self.n_vars - self.n_objs + 1
@@ -28,13 +30,19 @@ class DTLZ:
         else:
             raise Exception("Either provide number of variables or k!")
 
-    def g1(self, X_M):  # for DTLZ 1 and 3.
+    def get_bounds(self, upper=True):
+        if upper:
+            return self.upperbound.copy()
+        else:
+            return self.lowerbound.copy()
+
+    def _g1(self, X_M):  # for DTLZ 1 and 3.
         return 100 * (self.k + np.sum(np.square(X_M - 0.5) - np.cos(20 * np.pi * (X_M - 0.5)), axis=1))
 
-    def g2(self, X_M):  # for DTLZ 2, 4, and 5.
+    def _g2(self, X_M):  # for DTLZ 2, 4, and 5.
         return np.sum(np.square(X_M - 0.5), axis=1)
 
-    def g3(self, X_M):  # for DTLZ 6.
+    def _g3(self, X_M):  # for DTLZ 6.
         return np.sum(np.power(X_M, 0.1), axis=1)
 
     def evaluate(self, x):
@@ -42,14 +50,14 @@ class DTLZ:
 
     def sample(self, n_samples):
         """
-        :param n_samples: The number of samples collected from a function variant. Type: int
+        :param n_samples: The number of samples collected from a DTLZ function. Type: int
         :return: The sampled data x and evaluated fitness y.
         """
         x = lhs(self.n_vars, n_samples)
         y = self.evaluate(x)
         return x, y
 
-    def obj_func(self, X_, g, alpha=1):
+    def _obj_func(self, X_, g, alpha=1):
         f = (1 + g)
         f *= np.prod(np.cos(np.power(X_[:, :X_.shape[1]], alpha) * np.pi / 2.0), axis=1)
         for i in range(1, self.n_objs):
@@ -70,7 +78,7 @@ class DTLZ1(DTLZ):
         :return: The set of evaluated samples. Type: 2darray. Shape: (n_samples, n_objs).
         """
         X_, X_M = x[:, :self.n_objs - 1], x[:, self.n_objs - 1:]  # y, z
-        g = self.g1(X_M)
+        g = self._g1(X_M)
 
         f = 0.5 * (1 + g)
         f *= np.prod(X_[:, :X_.shape[1]], axis=1)
@@ -92,8 +100,8 @@ class DTLZ2(DTLZ):
         :return: The set of evaluated samples. Type: 2darray. Shape: (n_samples, n_objs).
         """
         X_, X_M = x[:, :self.n_objs - 1], x[:, self.n_objs - 1:]
-        g = self.g2(X_M)
-        return self.obj_func(X_, g)
+        g = self._g2(X_M)
+        return self._obj_func(X_, g)
 
 
 class DTLZ3(DTLZ):
@@ -106,8 +114,8 @@ class DTLZ3(DTLZ):
         :return: The set of evaluated samples. Type: 2darray. Shape: (n_samples, n_objs).
         """
         X_, X_M = x[:, :self.n_objs - 1], x[:, self.n_objs - 1:]
-        g = self.g1(X_M)
-        return self.obj_func(X_, g, alpha=1)
+        g = self._g1(X_M)
+        return self._obj_func(X_, g, alpha=1)
 
 
 class DTLZ4(DTLZ):
@@ -120,8 +128,8 @@ class DTLZ4(DTLZ):
         :return: The set of evaluated samples. Type: 2darray. Shape: (n_samples, n_objs).
         """
         X_, X_M = x[:, :self.n_objs - 1], x[:, self.n_objs - 1:]
-        g = self.g2(X_M)
-        return self.obj_func(X_, g, alpha=100)
+        g = self._g2(X_M)
+        return self._obj_func(X_, g, alpha=100)
 
 
 class DTLZ5(DTLZ):
@@ -134,10 +142,10 @@ class DTLZ5(DTLZ):
         :return: The set of evaluated samples. Type: 2darray. Shape: (n_samples, n_objs).
         """
         X_, X_M = x[:, :self.n_objs - 1], x[:, self.n_objs - 1:]
-        g = self.g2(X_M)
+        g = self._g2(X_M)
         theta = 1. / (2 * (1 + g[:, None])) * (1 + 2 * g[:, None] * X_)
         theta = np.column_stack((x[:, 0], theta[:, 1:]))
-        return self.obj_func(theta, g)
+        return self._obj_func(theta, g)
 
 
 class DTLZ6(DTLZ):
@@ -150,10 +158,10 @@ class DTLZ6(DTLZ):
         :return: The set of evaluated samples. Type: 2darray. Shape: (n_samples, n_objs).
         """
         X_, X_M = x[:, :self.n_objs - 1], x[:, self.n_objs - 1:]
-        g = self.g3(X_M)
+        g = self._g3(X_M)
         theta = 1. / (2 * (1 + g[:, None])) * (1 + 2 * g[:, None] * X_)
         theta = np.column_stack((x[:, 0], theta[:, 1:]))
-        return self.obj_func(theta, g)
+        return self._obj_func(theta, g)
 
 
 class DTLZ7(DTLZ):
